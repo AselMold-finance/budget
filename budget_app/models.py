@@ -1,4 +1,5 @@
 from datetime import timedelta
+from locale import currency
 from statistics import mode
 from django.utils import timezone
 from django.db import models
@@ -7,6 +8,10 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from .service import get_current_year
 from django.db.models import Q, Count
 
+
+class AcceptChoice(models.TextChoices):
+        YES = 'yes', 'Да'
+        NO = 'no', 'Нет'
 
 class PerformanceIndicators(models.TextChoices):
         LOAN_PORTFOLIO_QUALITY = '1', 'Кредитный портфель'
@@ -21,6 +26,17 @@ class PerformanceIndicators(models.TextChoices):
         INTEREST_INCOME = '10', 'Процентные доходы'
         STOCK = '11', 'Ценные бумаги'
         ADMINISTRATIVE_EXPENSE = '12', 'Административные расходы'
+        
+        
+class CurrencyType(models.TextChoices):
+        RUB = 'rub', 'Рубль'
+        DOLLAR = 'dollar', 'Доллар'
+        EURO = 'euro', 'Евро'
+        SOM = 'som', 'Сом'
+        YANG = 'yang', ' Юань'
+        TENGE = 'tenge', 'Тенге'
+        LIRA = 'lira', 'Лира'
+        WON = 'won', 'Корейский Вон'
 
 
 class PerformanceIndicator(models.Model):    
@@ -72,6 +88,11 @@ class Branch(models.Model):
         max_length=20,
         unique=True,
         blank=True
+    )
+    is_structual = models.BooleanField(
+        verbose_name='Это структурное подразделение, а не филиал!',
+        choices=AcceptChoice.choices,
+        default=AcceptChoice.YES
     )
     branch_address = models.CharField(
         verbose_name='Адрес филиала',
@@ -241,17 +262,21 @@ class StructuralDivision(models.Model):
         verbose_name='Название структурного подразделения',
         unique=True
     )
+    branch = models.ForeignKey(
+        Branch,
+        on_delete=models.PROTECT,
+        verbose_name='Структурное подразделение'
+    )
     create_date = models.DateTimeField(
         auto_now_add=True
     )
     update_date = models.DateTimeField(
         auto_now=True
     )
-    user = models.ForeignKey(
-        User,
-        on_delete=models.PROTECT,
-        related_name='structure'
-    )
+    
+    def save(self, *args, **kwargs):
+        if self.branch.is_structual:
+            return super().save(args, kwargs)
     
     def __str__(self):
         return f'{self.structural_division_name} | {self.user.username}'    
@@ -361,6 +386,11 @@ class PlannedAmount(models.Model):
         "SchedulePlan",
         on_delete=models.PROTECT,
     )
+    currency = models.ForeignKey(
+        'Currency',
+        on_delete=models.PROTECT,
+        verbose_name='Валюта бюджетирования'
+    )
     
     def total_amount(self,):
         all_month = (
@@ -429,4 +459,32 @@ class SchedulePlan(models.Model):
     class Meta:
         verbose_name = 'График бюджетирования'
         verbose_name_plural = 'Графики бюджетирования'
+
+
+class Currency(models.Model):
+    name = models.CharField(
+        max_length=20,
+        verbose_name='Наименование Валюты',
+        choices=CurrencyType.choices,
+        default=CurrencyType.SOM,
+        unique=True
+    )
+    currency = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        verbose_name='Курс валюты',
+        validators=[
+            MinValueValidator(0)
+            ]
+    )
+    currency_planed_year = models.ForeignKey(
+        SchedulePlan,
+        on_delete=models.PROTECT,
+    )
+    create_date = models.DateTimeField(
+        auto_now_add=True
+    )
+    update_date = models.DateTimeField(
+        auto_now=True
+    )
     
